@@ -1,0 +1,25 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: tts-reader-backend
+  web:
+    resources:
+      static-locations: classpath:/static/
+
+tts:
+  mode: mock
+  output-dir: ${user.home}/tts-reader/outputs
+  public-path-prefix: /api/tts/files
+  chunk-concurrency: 2
+  http:
+    base-url: http://127.0.0.1:9880
+    connect-timeout-seconds: 5
+    read-timeout-seconds: 900
+  mock:
+    sample-rate: 22050
+    default-char-duration-ms: 180
+    punctuation-duration-ms: 260
+    whitespace-duration-ms: 90
+    pause-gap-ms: 24
