@@ -38,7 +38,7 @@ const UI = {
 const voiceNameMap = {
   'cosy-default': '\u9ed8\u8ba4\u7537\u58f0',
   'cosy-gentle': '\u6e29\u67d4\u5973\u58f0',
-  'cosy-clear': '\u6e05\u6670\u7537\u58f0',
+  'cosy-clear': '\u6e05\u6670\u5973\u58f0',
 }
 
 const voiceInitialMap = {
