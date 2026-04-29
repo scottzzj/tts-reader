@@ -1,5 +1,6 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { Upload } from 'lucide-vue-next'
 import ReaderPanel from './components/ReaderPanel.vue'
 import ReaderTimeline from './components/ReaderTimeline.vue'
 import ReaderToolbar from './components/ReaderToolbar.vue'
@@ -23,6 +24,10 @@ const UI = {
   title: '\u672c\u5730 TTS \u9605\u8bfb\u5668',
   sampleText: '',
   editorTitle: '\u8f93\u5165\u533a',
+  importMarkdown: '\u5bfc\u5165 MD',
+  importMarkdownTitle: '\u5bfc\u5165 Markdown \u6587\u4ef6',
+  errorMarkdownType: '\u8bf7\u9009\u62e9 .md \u6216 .markdown \u6587\u4ef6',
+  errorMarkdownRead: 'Markdown \u6587\u4ef6\u8bfb\u53d6\u5931\u8d25',
   previewTitle: '\u9884\u89c8\u533a',
   editorPlaceholder: '\u8bf7\u8f93\u5165\u8981\u8f6c\u6210\u8bed\u97f3\u7684\u6587\u672c',
   errorLoadVoices: '\u52a0\u8f7d\u97f3\u8272\u5931\u8d25',
@@ -62,6 +67,7 @@ const defaultVoice = {
 
 const audioRef = ref(null)
 const editorRef = ref(null)
+const fileInputRef = ref(null)
 const panelRef = ref(null)
 
 const voices = ref([])
@@ -73,6 +79,7 @@ const submittedText = ref('')
 const isGenerating = ref(false)
 const isBuffering = ref(false)
 const isPlaying = ref(false)
+const isEditorDragActive = ref(false)
 const errorMessage = ref('')
 
 const currentTimeMs = ref(0)
@@ -656,22 +663,10 @@ function locateSegmentIndex(segments, timeMs, previousIndex) {
   return -1
 }
 
-async function restartAudio() {
-  if (!hasSession.value) {
-    currentTimeMs.value = 0
-    activeSegmentIndex.value = -1
-    return
-  }
-
-  const autoplay = isPlaying.value
-  if (!canPlayChunk(audioChunks.value[0])) {
-    currentTimeMs.value = 0
-    activeSegmentIndex.value = -1
-    pendingAutoplay = autoplay || !hasPlayableAudio.value
-    return
-  }
-
-  await playChunk(0, { autoplay, seekMs: 0, session: sessionId })
+async function resetInput() {
+  clearSession({ keepDraft: false, resetEditor: true })
+  await nextTick()
+  editorRef.value?.focus()
 }
 
 async function handleSeek(event) {
@@ -738,6 +733,85 @@ function cycleVoice() {
     draftText.value = latestText || submittedText.value || draftText.value
     clearSession({ keepDraft: true, resetEditor: true })
   }
+}
+
+function openMarkdownPicker() {
+  fileInputRef.value?.click()
+}
+
+async function handleMarkdownFileChange(event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+
+  await importMarkdownFile(file)
+  event.target.value = ''
+}
+
+function handleEditorDragEnter(event) {
+  if (!hasMarkdownFile(event.dataTransfer?.items)) return
+  isEditorDragActive.value = true
+}
+
+function handleEditorDragOver(event) {
+  if (!hasMarkdownFile(event.dataTransfer?.items)) return
+  event.dataTransfer.dropEffect = 'copy'
+  isEditorDragActive.value = true
+}
+
+function handleEditorDragLeave(event) {
+  if (event.currentTarget.contains(event.relatedTarget)) return
+  isEditorDragActive.value = false
+}
+
+async function handleEditorDrop(event) {
+  isEditorDragActive.value = false
+  const file = Array.from(event.dataTransfer?.files ?? []).find(isMarkdownFile)
+  if (!file) {
+    errorMessage.value = UI.errorMarkdownType
+    return
+  }
+
+  await importMarkdownFile(file)
+}
+
+function hasMarkdownFile(items) {
+  return Array.from(items ?? []).some((item) => (
+    item.kind === 'file'
+    && (
+      item.type === 'text/markdown'
+      || item.type === 'text/plain'
+      || item.type === ''
+    )
+  ))
+}
+
+function isMarkdownFile(file) {
+  const fileName = file?.name?.toLowerCase() ?? ''
+  return fileName.endsWith('.md') || fileName.endsWith('.markdown')
+}
+
+async function importMarkdownFile(file) {
+  if (!isMarkdownFile(file)) {
+    errorMessage.value = UI.errorMarkdownType
+    return
+  }
+
+  try {
+    const text = await file.text()
+    setEditorText(text)
+    errorMessage.value = ''
+  } catch {
+    errorMessage.value = UI.errorMarkdownRead
+  }
+}
+
+function setEditorText(text) {
+  clearSession({ keepDraft: true, resetEditor: false })
+  draftText.value = normalizeEditorText(text)
+  syncEditorContent()
+  nextTick(() => {
+    editorRef.value?.focus()
+  })
 }
 
 function handleEditorInput(event) {
@@ -959,7 +1033,7 @@ function resolvePollInterval(index) {
       :is-playing="isPlaying"
       :is-generating="isGenerating"
       :has-playable-audio="hasPlayableAudio"
-      @restart="restartAudio"
+      @reset-input="resetInput"
       @toggle-playback="togglePlayback"
       @cycle-rate="cycleRate"
       @cycle-voice="cycleVoice"
@@ -978,8 +1052,33 @@ function resolvePollInterval(index) {
       <section class="reader-stage">
         <section class="reader-grid">
           <section class="reader-card">
-            <div class="card-label">{{ UI.editorTitle }}</div>
-            <div class="editor-wrap">
+            <div class="card-heading">
+              <div class="card-label">{{ UI.editorTitle }}</div>
+              <button
+                class="import-button"
+                type="button"
+                :title="UI.importMarkdownTitle"
+                @click="openMarkdownPicker"
+              >
+                <Upload :size="16" />
+                <span>{{ UI.importMarkdown }}</span>
+              </button>
+              <input
+                ref="fileInputRef"
+                class="hidden-file-input"
+                type="file"
+                accept=".md,.markdown,text/markdown,text/plain"
+                @change="handleMarkdownFileChange"
+              >
+            </div>
+            <div
+              class="editor-wrap"
+              :class="{ 'drag-active': isEditorDragActive }"
+              @dragenter.prevent="handleEditorDragEnter"
+              @dragover.prevent="handleEditorDragOver"
+              @dragleave="handleEditorDragLeave"
+              @drop.prevent="handleEditorDrop"
+            >
               <div
                 ref="editorRef"
                 class="reader-editor"

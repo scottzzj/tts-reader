@@ -41,7 +41,7 @@ defineProps({
   },
 })
 
-defineEmits(['restart', 'toggle-playback', 'cycle-rate', 'cycle-voice'])
+defineEmits(['reset-input', 'toggle-playback', 'cycle-rate', 'cycle-voice'])
 </script>
 
 <template>
@@ -49,38 +49,36 @@ defineEmits(['restart', 'toggle-playback', 'cycle-rate', 'cycle-voice'])
     <div class="toolbar-brand">
       <strong class="toolbar-title">{{ headline }}</strong>
     </div>
+  </header>
 
-    <div class="toolbar-center">
-      <div class="voice-stack">
-        <button
-          class="voice-badge"
-          type="button"
-          :style="{ '--voice-color': activeVoice.accentColor }"
-          :title="voicesCount > 1 ? `${UI.titleSwitchVoice}: ${activeVoice.name}` : `${UI.titleCurrentVoice}: ${activeVoice.name}`"
-          @click="$emit('cycle-voice')"
-        >
-          <span>{{ activeVoice.initials }}</span>
-        </button>
-        <span class="voice-stack-name">{{ activeVoice.name }}</span>
-      </div>
-
-      <button class="toolbar-icon" type="button" aria-label="Restart" @click="$emit('restart')">
-        <RotateCcw :size="24" />
-      </button>
-
+  <div class="toolbar-center">
+    <div class="voice-stack">
       <button
-        class="play-button"
+        class="voice-badge"
         type="button"
-        :disabled="isGenerating && !hasPlayableAudio"
-        @click="$emit('toggle-playback')"
+        :style="{ '--voice-color': activeVoice.accentColor }"
+        :title="voicesCount > 1 ? `${UI.titleSwitchVoice}: ${activeVoice.name}` : `${UI.titleCurrentVoice}: ${activeVoice.name}`"
+        @click="$emit('cycle-voice')"
       >
-        <Pause v-if="isPlaying" :size="28" />
-        <Play v-else :size="28" />
+        <span>{{ activeVoice.initials }}</span>
       </button>
-
-      <button class="speed-button" type="button" @click="$emit('cycle-rate')">{{ rate }}x</button>
+      <span class="voice-stack-name">{{ activeVoice.name }}</span>
     </div>
 
-    <div class="toolbar-spacer" aria-hidden="true"></div>
-  </header>
+    <button class="toolbar-icon" type="button" aria-label="重置" title="清空输入区" @click="$emit('reset-input')">
+      <RotateCcw :size="24" />
+    </button>
+
+    <button
+      class="play-button"
+      type="button"
+      :disabled="isGenerating && !hasPlayableAudio"
+      @click="$emit('toggle-playback')"
+    >
+      <Pause v-if="isPlaying" :size="28" />
+      <Play v-else :size="28" />
+    </button>
+
+    <button class="speed-button" type="button" @click="$emit('cycle-rate')">{{ rate }}x</button>
+  </div>
 </template>
