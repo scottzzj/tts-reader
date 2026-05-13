@@ -11,16 +11,6 @@ This project is a local TTS reader with synchronized text highlighting.
 ## Runtime Screenshot / 页面运行图
 查看github pages
 
-Current behavior / 当前实现：
-
-- Left panel is an editable text input area / 左侧是可编辑输入区
-- Right panel is a read-along preview area / 右侧是跟读预览区
-- Top toolbar supports play, restart, speed switch, and voice switch / 顶部工具栏支持播放、重播、切换倍速、切换音色
-- Playback progress can be dragged on the timeline / 支持通过时间轴拖动播放进度
-- Clicking highlighted text can jump playback / 点击文本可跳转播放位置
-- Long text is split into batches and synthesized progressively / 长文本会分批合成并逐步可播
-- Audio and text alignment are returned as character-based segments / 音频和文本对齐信息以字符级分段返回
-
 ## Stack / 技术栈
 
 - `frontend`: Vue 3 + Vite
