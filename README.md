@@ -9,8 +9,7 @@ This project is a local TTS reader with synchronized text highlighting.
 这个项目是一个本地 TTS 阅读器，支持语音播放时的文本高亮跟读。
 
 ## Runtime Screenshot / 页面运行图
-
-![Runtime Screenshot](docs/runtime-page.png)
+查看github pages
 
 Current behavior / 当前实现：
 
