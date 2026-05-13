@@ -1,5 +1,10 @@
-# Vue 3 + Vite
+# frontend
 
-This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+Vue 3 + Vite frontend for `tts-reader`.
 
-Learn more about IDE Support for Vue in the [Vue Docs Scaling up Guide](https://vuejs.org/guide/scaling-up/tooling.html#ide-support).
+Use this app for local UI development and integration with the Spring Boot backend.
+
+- Default dev server: `http://127.0.0.1:5173`
+- Default API proxy target: `http://127.0.0.1:8080`
+
+The public static preview used by GitHub Pages lives in [../docs/index.html](../docs/index.html), not in this frontend workspace.
