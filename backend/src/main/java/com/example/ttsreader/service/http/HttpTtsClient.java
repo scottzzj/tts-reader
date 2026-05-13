@@ -9,6 +9,8 @@ import com.example.ttsreader.dto.TtsVoice;
 import com.example.ttsreader.service.TtsClient;
 import com.example.ttsreader.service.TtsSynthesisResult;
 import com.example.ttsreader.service.TtsStreamPiece;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
@@ -20,9 +22,11 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Base64;
@@ -31,6 +35,8 @@ import java.util.UUID;
 import java.util.function.Consumer;
 
 public class HttpTtsClient implements TtsClient {
+
+    private static final Logger log = LoggerFactory.getLogger(HttpTtsClient.class);
 
     private final RestClient restClient;
     private final TtsProperties properties;
@@ -73,30 +79,33 @@ public class HttpTtsClient implements TtsClient {
         try {
             Path outputDirectory = Paths.get(properties.outputDir()).toAbsolutePath().normalize();
             Files.createDirectories(outputDirectory);
-            String fileName = sanitizeFileName(response.fileName());
+            String fileName = buildUniqueFileName(response.fileName());
             Path outputFile = outputDirectory.resolve(fileName).normalize();
             if (!outputFile.startsWith(outputDirectory)) {
                 throw new IllegalStateException("Resolved audio path is outside the configured output directory");
             }
-            Files.createDirectories(outputFile.getParent());
-            byte[] bytes;
+            persistAudio(response, outputFile);
+            String normalizedFileName = normalizeForWaveMerge(outputFile);
+            Path normalizedOutputFile = outputDirectory.resolve(normalizedFileName).normalize();
             if (StringUtils.hasText(response.audioBase64())) {
-                bytes = Base64.getDecoder().decode(response.audioBase64());
-            } else if (StringUtils.hasText(response.audioUrl())) {
-                bytes = restClient.get().uri(response.audioUrl()).retrieve().body(byte[].class);
-            } else {
-                throw new IllegalStateException("No audio returned by TTS service");
+                Files.deleteIfExists(outputFile);
             }
-            Files.write(outputFile, bytes);
             return new TtsSynthesisResult(
-                    outputFile,
-                    fileName,
+                    normalizedOutputFile,
+                    normalizedFileName,
                     response.durationMs(),
                     StringUtils.hasText(response.voiceId()) ? response.voiceId() : request.voiceId(),
                     request.rate() == null ? 1.0 : request.rate(),
                     response.segments() == null ? List.of() : response.segments()
             );
         } catch (Exception e) {
+            log.error(
+                    "Failed to persist HTTP TTS response. upstreamFileName={}, audioUrl={}, outputDir={}",
+                    response.fileName(),
+                    response.audioUrl(),
+                    properties.outputDir(),
+                    e
+            );
             throw new IllegalStateException("Failed to persist HTTP TTS response", e);
         }
     }
@@ -181,6 +190,67 @@ public class HttpTtsClient implements TtsClient {
         }
         String sanitized = Paths.get(upstreamFileName).getFileName().toString();
         return StringUtils.hasText(sanitized) ? sanitized : "tts-" + UUID.randomUUID() + ".wav";
+    }
+
+    private String buildUniqueFileName(String upstreamFileName) {
+        String sanitized = sanitizeFileName(upstreamFileName);
+        int extensionIndex = sanitized.lastIndexOf('.');
+        String extension = extensionIndex >= 0 ? sanitized.substring(extensionIndex) : ".wav";
+        return "tts-" + UUID.randomUUID() + extension.toLowerCase();
+    }
+
+    private void persistAudio(HttpSynthesisResponse response, Path outputFile) throws Exception {
+        Files.createDirectories(outputFile.getParent());
+        Path tempFile = Files.createTempFile(outputFile.getParent(), "tts-http-", ".tmp");
+        try {
+            if (StringUtils.hasText(response.audioBase64())) {
+                Files.write(tempFile, Base64.getDecoder().decode(response.audioBase64()));
+            } else if (StringUtils.hasText(response.audioUrl())) {
+                byte[] audioBytes = restClient.get()
+                        .uri(response.audioUrl())
+                        .retrieve()
+                        .body(byte[].class);
+                if (audioBytes == null || audioBytes.length == 0) {
+                    throw new IllegalStateException("No audio bytes returned by TTS service");
+                }
+                Files.write(tempFile, audioBytes);
+            } else {
+                throw new IllegalStateException("No audio returned by TTS service");
+            }
+            moveTempFile(tempFile, outputFile);
+        } finally {
+            Files.deleteIfExists(tempFile);
+        }
+    }
+
+    private void moveTempFile(Path tempFile, Path outputFile) throws Exception {
+        try {
+            Files.move(tempFile, outputFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException exception) {
+            log.warn("Atomic move is not supported for {}, falling back to replace-existing move", outputFile);
+            Files.move(tempFile, outputFile, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    private String normalizeForWaveMerge(Path sourceFile) throws Exception {
+        String fileName = sourceFile.getFileName().toString();
+        if (fileName.toLowerCase().endsWith(".wav")) {
+            return fileName;
+        }
+
+        Path normalizedFile = sourceFile.resolveSibling(fileName + ".wav");
+        try (javax.sound.sampled.AudioInputStream audioInputStream =
+                     javax.sound.sampled.AudioSystem.getAudioInputStream(sourceFile.toFile())) {
+            javax.sound.sampled.AudioSystem.write(
+                    audioInputStream,
+                    javax.sound.sampled.AudioFileFormat.Type.WAVE,
+                    normalizedFile.toFile()
+            );
+        } catch (Exception exception) {
+            Files.deleteIfExists(sourceFile);
+            throw new IllegalStateException("Chunked synthesis currently requires WAV-compatible audio from the upstream service", exception);
+        }
+        return normalizedFile.getFileName().toString();
     }
 
     private List<TextSegment> parseSegments(JsonNode segmentsNode) {
